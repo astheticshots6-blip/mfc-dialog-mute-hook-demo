@@ -22,12 +22,28 @@ namespace
     using SndPlaySoundW_t = BOOL(WINAPI*)(LPCWSTR, UINT);
     using SndPlaySoundA_t = BOOL(WINAPI*)(LPCSTR, UINT);
 
+    using MessageBoxW_t = int (WINAPI*)(HWND, LPCWSTR, LPCWSTR, UINT);
+    using MessageBoxA_t = int (WINAPI*)(HWND, LPCSTR, LPCSTR, UINT);
+    using MessageBoxIndirectW_t = int (WINAPI*)(const MSGBOXPARAMSW*);
+    using MessageBoxIndirectA_t = int (WINAPI*)(const MSGBOXPARAMSA*);
+
+    using AfxMessageBoxW_t = int (WINAPI*)(LPCWSTR, UINT, UINT);
+    using AfxMessageBoxA_t = int (WINAPI*)(LPCSTR, UINT, UINT);
+
     static MessageBeep_t g_realMessageBeep = nullptr;
     static Beep_t g_realBeep = nullptr;
     static PlaySoundW_t g_realPlaySoundW = nullptr;
     static PlaySoundA_t g_realPlaySoundA = nullptr;
     static SndPlaySoundW_t g_realSndPlaySoundW = nullptr;
     static SndPlaySoundA_t g_realSndPlaySoundA = nullptr;
+
+    static MessageBoxW_t g_realMessageBoxW = nullptr;
+    static MessageBoxA_t g_realMessageBoxA = nullptr;
+    static MessageBoxIndirectW_t g_realMessageBoxIndirectW = nullptr;
+    static MessageBoxIndirectA_t g_realMessageBoxIndirectA = nullptr;
+
+    static AfxMessageBoxW_t g_realAfxMessageBoxW = nullptr;
+    static AfxMessageBoxA_t g_realAfxMessageBoxA = nullptr;
 
     // Inline hook bookkeeping
     struct InlineHookRecord {
@@ -108,6 +124,54 @@ namespace
         }
         if (g_realSndPlaySoundA) return g_realSndPlaySoundA(pszSound, fuSound);
         return sndPlaySoundA(pszSound, fuSound);
+    }
+
+    int WINAPI ProxyMessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType)
+    {
+        OutputDebugStringW(L"[DialogMuteHook] MessageBoxW called\n");
+        if (g_realMessageBoxW) return g_realMessageBoxW(hWnd, lpText, lpCaption, uType);
+        return MessageBoxW(hWnd, lpText, lpCaption, uType);
+    }
+
+    int WINAPI ProxyMessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType)
+    {
+        OutputDebugStringA("[DialogMuteHook] MessageBoxA called\n");
+        if (g_realMessageBoxA) return g_realMessageBoxA(hWnd, lpText, lpCaption, uType);
+        return MessageBoxA(hWnd, lpText, lpCaption, uType);
+    }
+
+    int WINAPI ProxyMessageBoxIndirectW(const MSGBOXPARAMSW* pMsgBoxParams)
+    {
+        OutputDebugStringW(L"[DialogMuteHook] MessageBoxIndirectW called\n");
+        if (g_realMessageBoxIndirectW) return g_realMessageBoxIndirectW(pMsgBoxParams);
+        return MessageBoxIndirectW(pMsgBoxParams);
+    }
+
+    int WINAPI ProxyMessageBoxIndirectA(const MSGBOXPARAMSA* pMsgBoxParams)
+    {
+        OutputDebugStringA("[DialogMuteHook] MessageBoxIndirectA called\n");
+        if (g_realMessageBoxIndirectA) return g_realMessageBoxIndirectA(pMsgBoxParams);
+        return MessageBoxIndirectA(pMsgBoxParams);
+    }
+
+    int WINAPI ProxyAfxMessageBoxW(LPCWSTR lpText, UINT nType, UINT nIDHelp)
+    {
+        OutputDebugStringW(L"[DialogMuteHook] AfxMessageBoxW called\n");
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] AfxMessageBoxW: suppressing sound via global mute\n");
+        }
+        if (g_realAfxMessageBoxW) return g_realAfxMessageBoxW(lpText, nType, nIDHelp);
+        return MessageBoxW(nullptr, lpText, L"", nType);
+    }
+
+    int WINAPI ProxyAfxMessageBoxA(LPCSTR lpText, UINT nType, UINT nIDHelp)
+    {
+        OutputDebugStringA("[DialogMuteHook] AfxMessageBoxA called\n");
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringA("[DialogMuteHook] AfxMessageBoxA: suppressing sound via global mute\n");
+        }
+        if (g_realAfxMessageBoxA) return g_realAfxMessageBoxA(lpText, nType, nIDHelp);
+        return MessageBoxA(nullptr, lpText, "", nType);
     }
 
     bool InstallInlineHook(void* target, void* detour, void** outTrampoline)
@@ -197,6 +261,47 @@ namespace
         g_inlineHooks.clear();
     }
 
+    bool TryHookExport(HMODULE hModule, const char* exportName, void* detour, void** originalAddress)
+    {
+        if (!hModule || !exportName || !detour || !originalAddress) return false;
+        FARPROC p = GetProcAddress(hModule, exportName);
+        if (!p) return false;
+        void* tramp = nullptr;
+        if (!InstallInlineHook(reinterpret_cast<void*>(p), detour, &tramp)) return false;
+        *originalAddress = reinterpret_cast<void*>(p);
+        return true;
+    }
+
+    // Enumerate exports and try to find any symbol containing "AfxMessageBox" then hook it.
+    void TryHookAfxByScanningExports(HMODULE hModule)
+    {
+        if (!hModule) return;
+        auto* pDos = reinterpret_cast<PIMAGE_DOS_HEADER>(hModule);
+        if (pDos->e_magic != IMAGE_DOS_SIGNATURE) return;
+        auto* pNt = reinterpret_cast<PIMAGE_NT_HEADERS>(reinterpret_cast<BYTE*>(hModule) + pDos->e_lfanew);
+        DWORD exportRVA = pNt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+        if (exportRVA == 0) return;
+        auto* pExport = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(reinterpret_cast<BYTE*>(hModule) + exportRVA);
+        DWORD* namesRVA = reinterpret_cast<DWORD*>(reinterpret_cast<BYTE*>(hModule) + pExport->AddressOfNames);
+        WORD* ordinals = reinterpret_cast<WORD*>(reinterpret_cast<BYTE*>(hModule) + pExport->AddressOfNameOrdinals);
+        DWORD nameCount = pExport->NumberOfNames;
+        char buf[512];
+        for (DWORD i = 0; i < nameCount; ++i) {
+            const char* name = reinterpret_cast<const char*>(reinterpret_cast<BYTE*>(hModule) + namesRVA[i]);
+            if (strstr(name, "AfxMessageBox") != nullptr) {
+                sprintf_s(buf, "[DialogMuteHook] Found export name: %s\n", name);
+                OutputDebugStringA(buf);
+                void* tramp = nullptr;
+                if (InstallInlineHook(reinterpret_cast<void*>(GetProcAddress(hModule, name)), reinterpret_cast<void*>(&ProxyAfxMessageBoxW), &tramp)) {
+                    // assume Unicode version if we hooked a mangled name; store original
+                    g_realAfxMessageBoxW = reinterpret_cast<AfxMessageBoxW_t>(GetProcAddress(hModule, name));
+                    sprintf_s(buf, "[DialogMuteHook] Hooked export symbol %s at %p\n", name, GetProcAddress(hModule, name));
+                    OutputDebugStringA(buf);
+                }
+            }
+        }
+    }
+
     bool PatchImportThunk(HMODULE hModule, const char* dllName, const char* funcName, FARPROC replacement)
     {
         if (!hModule || !dllName || !funcName || !replacement) return false;
@@ -262,6 +367,11 @@ namespace
         PatchImportThunk(hModule, "winmm.dll", "PlaySoundA", reinterpret_cast<FARPROC>(&ProxyPlaySoundA));
         PatchImportThunk(hModule, "winmm.dll", "sndPlaySoundW", reinterpret_cast<FARPROC>(&ProxySndPlaySoundW));
         PatchImportThunk(hModule, "winmm.dll", "sndPlaySoundA", reinterpret_cast<FARPROC>(&ProxySndPlaySoundA));
+
+        PatchImportThunk(hModule, "user32.dll", "MessageBoxW", reinterpret_cast<FARPROC>(&ProxyMessageBoxW));
+        PatchImportThunk(hModule, "user32.dll", "MessageBoxA", reinterpret_cast<FARPROC>(&ProxyMessageBoxA));
+        PatchImportThunk(hModule, "user32.dll", "MessageBoxIndirectW", reinterpret_cast<FARPROC>(&ProxyMessageBoxIndirectW));
+        PatchImportThunk(hModule, "user32.dll", "MessageBoxIndirectA", reinterpret_cast<FARPROC>(&ProxyMessageBoxIndirectA));
     }
 
     void PatchTargetModulesOnce()
@@ -339,6 +449,12 @@ namespace
                             if (wcontains_nocase(filename, L"mfc")) {
                                 OutputDebugStringW(L"[DialogMuteHook] Detected new MFC module, patching\n");
                                 PatchAllSoundHooksInModule(m);
+                                // try hooking exports
+                                TryHookExport(m, "AfxMessageBoxW", reinterpret_cast<void*>(&ProxyAfxMessageBoxW), reinterpret_cast<void**>(&g_realAfxMessageBoxW));
+                                TryHookExport(m, "AfxMessageBoxA", reinterpret_cast<void*>(&ProxyAfxMessageBoxA), reinterpret_cast<void**>(&g_realAfxMessageBoxA));
+                                TryHookExport(m, "AfxMessageBox", reinterpret_cast<void*>(&ProxyAfxMessageBoxW), reinterpret_cast<void**>(&g_realAfxMessageBoxW));
+                                // fallback: scan exports for mangled names
+                                TryHookAfxByScanningExports(m);
                             }
                         }
                         seen.push_back(m);
@@ -384,6 +500,15 @@ void DialogMuteHook::SetDialogMute(bool mute)
 {
     g_bMuteDialogSounds.store(mute);
     OutputDebugStringW(mute ? L"[DialogMuteHook] Global mute ON\n" : L"[DialogMuteHook] Global mute OFF\n");
+}
+
+void DialogMuteHook::UninstallDialogMuteHook()
+{
+    OutputDebugStringW(L"[DialogMuteHook] UninstallDialogMuteHook\n");
+    g_stopPatchThread.store(true);
+    if (g_patchThread.joinable()) g_patchThread.join();
+    RemoveAllInlineHooks();
+    g_bMuteDialogSounds.store(false);
 }
 
 bool DialogMuteHook::GetDialogMute()
