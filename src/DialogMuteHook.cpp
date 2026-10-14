@@ -13,32 +13,86 @@ namespace
     std::atomic<bool> g_bMuteDialogSounds(false);
 
     using MessageBeep_t = BOOL(WINAPI*)(UINT);
-    static MessageBeep_t g_realMessageBeep = nullptr;
+    using Beep_t = BOOL(WINAPI*)(DWORD, DWORD);
+    using PlaySoundW_t = BOOL(WINAPI*)(LPCWSTR, HMODULE, DWORD);
+    using PlaySoundA_t = BOOL(WINAPI*)(LPCSTR, HMODULE, DWORD);
+    using SndPlaySoundW_t = BOOL(WINAPI*)(LPCWSTR, UINT);
+    using SndPlaySoundA_t = BOOL(WINAPI*)(LPCSTR, UINT);
 
-    // Simple helper: case-insensitive wstring contains
+    static MessageBeep_t g_realMessageBeep = nullptr;
+    static Beep_t g_realBeep = nullptr;
+    static PlaySoundW_t g_realPlaySoundW = nullptr;
+    static PlaySoundA_t g_realPlaySoundA = nullptr;
+    static SndPlaySoundW_t g_realSndPlaySoundW = nullptr;
+    static SndPlaySoundA_t g_realSndPlaySoundA = nullptr;
+
     bool wcontains_nocase(const std::wstring& hay, const std::wstring& needle)
     {
-        auto it = std::search(
-            hay.begin(), hay.end(),
-            needle.begin(), needle.end(),
-            [](wchar_t a, wchar_t b){ return towlower(a) == towlower(b); });
+        auto it = std::search(hay.begin(), hay.end(), needle.begin(), needle.end(),
+            [](wchar_t a, wchar_t b) { return towlower(a) == towlower(b); });
         return it != hay.end();
     }
 
-    // Proxy that will be placed into the IAT of the MFC module so AfxMessageBox -> MessageBeep calls land here.
     BOOL WINAPI ProxyMessageBeep(UINT uType)
     {
         if (g_bMuteDialogSounds.load()) {
-            OutputDebugStringW(L"[DialogMuteHook] ProxyMessageBeep: suppressed\n");
+            OutputDebugStringW(L"[DialogMuteHook] MessageBeep suppressed\n");
             return TRUE;
         }
-        if (g_realMessageBeep) {
-            return g_realMessageBeep(uType);
-        }
+        if (g_realMessageBeep) return g_realMessageBeep(uType);
         return MessageBeep(uType);
     }
 
-    // Patch the import thunk for a single module
+    BOOL WINAPI ProxyBeep(DWORD dwFreq, DWORD dwDuration)
+    {
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] Beep suppressed\n");
+            return TRUE;
+        }
+        if (g_realBeep) return g_realBeep(dwFreq, dwDuration);
+        return Beep(dwFreq, dwDuration);
+    }
+
+    BOOL WINAPI ProxyPlaySoundW(LPCWSTR pszSound, HMODULE hmod, DWORD fdwSound)
+    {
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] PlaySoundW suppressed\n");
+            return TRUE;
+        }
+        if (g_realPlaySoundW) return g_realPlaySoundW(pszSound, hmod, fdwSound);
+        return PlaySoundW(pszSound, hmod, fdwSound);
+    }
+
+    BOOL WINAPI ProxyPlaySoundA(LPCSTR pszSound, HMODULE hmod, DWORD fdwSound)
+    {
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] PlaySoundA suppressed\n");
+            return TRUE;
+        }
+        if (g_realPlaySoundA) return g_realPlaySoundA(pszSound, hmod, fdwSound);
+        return PlaySoundA(pszSound, hmod, fdwSound);
+    }
+
+    BOOL WINAPI ProxySndPlaySoundW(LPCWSTR pszSound, UINT fuSound)
+    {
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] sndPlaySoundW suppressed\n");
+            return TRUE;
+        }
+        if (g_realSndPlaySoundW) return g_realSndPlaySoundW(pszSound, fuSound);
+        return sndPlaySoundW(pszSound, fuSound);
+    }
+
+    BOOL WINAPI ProxySndPlaySoundA(LPCSTR pszSound, UINT fuSound)
+    {
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] sndPlaySoundA suppressed\n");
+            return TRUE;
+        }
+        if (g_realSndPlaySoundA) return g_realSndPlaySoundA(pszSound, fuSound);
+        return sndPlaySoundA(pszSound, fuSound);
+    }
+
     bool PatchImportThunk(HMODULE hModule, const char* dllName, const char* funcName, FARPROC replacement)
     {
         if (!hModule || !dllName || !funcName || !replacement) return false;
@@ -78,51 +132,71 @@ namespace
         }
         return false;
     }
-}
 
-void DialogMuteHook::InstallDialogMuteHook()
-{
-    // Resolve the real MessageBeep function from user32
-    HMODULE hUser = GetModuleHandleW(L"user32.dll");
-    if (hUser) {
-        g_realMessageBeep = reinterpret_cast<MessageBeep_t>(GetProcAddress(hUser, "MessageBeep"));
-    }
+    void PatchThisProcessModuleImports()
+    {
+        HMODULE hExe = GetModuleHandleW(nullptr);
+        if (hExe) {
+            PatchImportThunk(hExe, "user32.dll", "MessageBeep", reinterpret_cast<FARPROC>(&ProxyMessageBeep));
+            PatchImportThunk(hExe, "kernel32.dll", "Beep", reinterpret_cast<FARPROC>(&ProxyBeep));
+            PatchImportThunk(hExe, "winmm.dll", "PlaySoundW", reinterpret_cast<FARPROC>(&ProxyPlaySoundW));
+            PatchImportThunk(hExe, "winmm.dll", "PlaySoundA", reinterpret_cast<FARPROC>(&ProxyPlaySoundA));
+            PatchImportThunk(hExe, "winmm.dll", "sndPlaySoundW", reinterpret_cast<FARPROC>(&ProxySndPlaySoundW));
+            PatchImportThunk(hExe, "winmm.dll", "sndPlaySoundA", reinterpret_cast<FARPROC>(&ProxySndPlaySoundA));
+        }
 
-    // Enumerate loaded modules and patch those that look like MFC DLLs ("mfc" in filename)
-    HMODULE hMods[512];
-    DWORD cbNeeded = 0;
-    if (EnumProcessModules(GetCurrentProcess(), hMods, sizeof(hMods), &cbNeeded)) {
-        size_t count = cbNeeded / sizeof(HMODULE);
-        for (size_t i = 0; i < count; ++i) {
-            wchar_t modName[MAX_PATH];
-            if (GetModuleFileNameW(hMods[i], modName, _countof(modName))) {
-                std::wstring name(modName);
-                // check whether filename contains "\mfc" or starts with mfc in filename
-                // we check the module file name component only
-                const wchar_t* base = wcsrchr(modName, L'\\');
-                std::wstring filename = base ? (base + 1) : name;
-                if (wcontains_nocase(filename, L"mfc")) {
-                    // Try to patch this module's IAT for MessageBeep
-                    BOOL ok = PatchImportThunk(hMods[i], "user32.dll", "MessageBeep", reinterpret_cast<FARPROC>(&ProxyMessageBeep));
-                    if (ok) {
-                        OutputDebugStringW(L"[DialogMuteHook] Patched MFC module IAT for MessageBeep\n");
-                    } else {
-                        // Not fatal; continue scanning
-                        OutputDebugStringW(L"[DialogMuteHook] Failed to patch MFC module IAT (MessageBeep)\n");
+        HMODULE hMods[512];
+        DWORD cbNeeded = 0;
+        if (EnumProcessModules(GetCurrentProcess(), hMods, sizeof(hMods), &cbNeeded)) {
+            size_t count = cbNeeded / sizeof(HMODULE);
+            for (size_t i = 0; i < count; ++i) {
+                wchar_t modName[MAX_PATH] = {};
+                if (GetModuleFileNameW(hMods[i], modName, _countof(modName))) {
+                    std::wstring file = modName;
+                    const wchar_t* base = wcsrchr(modName, L'\\');
+                    std::wstring filename = base ? (base + 1) : file;
+                    if (wcontains_nocase(filename, L"mfc") || hMods[i] == hExe) {
+                        PatchImportThunk(hMods[i], "user32.dll", "MessageBeep", reinterpret_cast<FARPROC>(&ProxyMessageBeep));
+                        PatchImportThunk(hMods[i], "kernel32.dll", "Beep", reinterpret_cast<FARPROC>(&ProxyBeep));
+                        PatchImportThunk(hMods[i], "winmm.dll", "PlaySoundW", reinterpret_cast<FARPROC>(&ProxyPlaySoundW));
+                        PatchImportThunk(hMods[i], "winmm.dll", "PlaySoundA", reinterpret_cast<FARPROC>(&ProxyPlaySoundA));
+                        PatchImportThunk(hMods[i], "winmm.dll", "sndPlaySoundW", reinterpret_cast<FARPROC>(&ProxySndPlaySoundW));
+                        PatchImportThunk(hMods[i], "winmm.dll", "sndPlaySoundA", reinterpret_cast<FARPROC>(&ProxySndPlaySoundA));
                     }
                 }
             }
         }
-    } else {
-        OutputDebugStringW(L"[DialogMuteHook] EnumProcessModules failed\n");
     }
+}
+
+void DialogMuteHook::InstallDialogMuteHook()
+{
+    HMODULE hUser = GetModuleHandleW(L"user32.dll");
+    HMODULE hKernel = GetModuleHandleW(L"kernel32.dll");
+    HMODULE hWinmm = GetModuleHandleW(L"winmm.dll");
+
+    if (hUser) {
+        g_realMessageBeep = reinterpret_cast<MessageBeep_t>(GetProcAddress(hUser, "MessageBeep"));
+    }
+    if (hKernel) {
+        g_realBeep = reinterpret_cast<Beep_t>(GetProcAddress(hKernel, "Beep"));
+    }
+    if (hWinmm) {
+        g_realPlaySoundW = reinterpret_cast<PlaySoundW_t>(GetProcAddress(hWinmm, "PlaySoundW"));
+        g_realPlaySoundA = reinterpret_cast<PlaySoundA_t>(GetProcAddress(hWinmm, "PlaySoundA"));
+        g_realSndPlaySoundW = reinterpret_cast<SndPlaySoundW_t>(GetProcAddress(hWinmm, "sndPlaySoundW"));
+        g_realSndPlaySoundA = reinterpret_cast<SndPlaySoundA_t>(GetProcAddress(hWinmm, "sndPlaySoundA"));
+    }
+
+    OutputDebugStringW(L"[DialogMuteHook] InstallDialogMuteHook\n");
+    PatchThisProcessModuleImports();
+    OutputDebugStringW(L"[DialogMuteHook] Patched MFC / EXE / system module import table entries\n");
 }
 
 void DialogMuteHook::UninstallDialogMuteHook()
 {
-    // For demo simplicity we do not restore original IAT entries.
-    // We only clear mute state.
     g_bMuteDialogSounds.store(false);
+    OutputDebugStringW(L"[DialogMuteHook] UninstallDialogMuteHook\n");
 }
 
 void DialogMuteHook::SetDialogMute(bool mute)
