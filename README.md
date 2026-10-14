@@ -1,16 +1,29 @@
 # MFC Dialog Mute Hook Demo
 
-This demo shows how to intercept Windows dialog beep/play sound APIs in an MFC app using MinHook and provide a system tray toggle to mute/unmute dialog sounds.
+This repository contains a small MFC example that demonstrates how to suppress the system beep for modal dialogs without removing the modal behavior itself.
 
-Instructions:
-1. Clone repo:
+It is designed for the following scenario:
+- MFC application
+- many dialogs are modal and trigger system sound (`MessageBeep`, `Beep`, `PlaySound`, etc.)
+- you want a small code change and a runtime toggle to mute dialog sounds
+- you want to stay mostly transparent to existing dialog code
+
+What is included:
+- MFC sample app with a small main dialog
+- runtime tray toggle (`静音提示音` / `取消静音`)
+- IAT patch implementation to mute sound APIs at runtime with a single initialization call
+- a `MinHook` submodule entry for future optional use
+
+Build steps:
+1. Clone the repo
    git clone https://github.com/astheticshots6-blip/mfc-dialog-mute-hook-demo.git
-2. Initialize submodules (MinHook):
+2. Update submodule (optional, recommended for future hook library use):
    git submodule update --init --recursive
-3. Open `MfcDialogMuteDemo.sln` in Visual Studio 2022 (x64 configuration) and build.
+3. Open `MfcDialogMuteDemo.sln` in Visual Studio 2022
+4. Set configuration to `Debug/x64` or `Release/x64`
+5. Build
 
 Notes:
-- The project is configured to Use MFC in a Shared DLL.
-- MinHook is included as a git submodule under `External/MinHook`.
-- Replace the `app.ico` resource if needed.
-
+- The example intentionally uses a shared MFC runtime.
+- The key integration point is `CMfcDialogMuteDemoApp::InitInstance()` on one line: `DialogMuteHook::InstallDialogMuteHook();`
+- The sound hook is process-wide and does not require editing every dialog.

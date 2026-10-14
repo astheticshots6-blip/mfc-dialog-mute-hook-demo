@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
-      <UniqueIdentifier>{A1A1A1A1-A1A1-4A1A-A1A1-A1A1A1A1A1A1}</UniqueIdentifier>
+      <UniqueIdentifier>{A1111111-1111-4111-8111-111111111111}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files">
-      <UniqueIdentifier>{B2B2B2B2-B2B2-4B2B-B2B2-B2B2B2B2B2B2}</UniqueIdentifier>
+      <UniqueIdentifier>{B2222222-2222-4222-8222-222222222222}</UniqueIdentifier>
     </Filter>
     <Filter Include="Resource Files">
-      <UniqueIdentifier>{C3C3C3C3-C3C3-4C3C-C3C3-C3C3C3C3C3C3}</UniqueIdentifier>
+      <UniqueIdentifier>{C3333333-3333-4333-8333-333333333333}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -27,6 +27,8 @@
     <ClCompile Include="src\TrayIconManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="src\StdAfx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -45,11 +47,10 @@
     <ClInclude Include="src\resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
     <ResourceCompile Include="resource\resource.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
-    <None Include="resource\app.ico">
-      <Filter>Resource Files</Filter>
-    </None>
   </ItemGroup>
 </Project>

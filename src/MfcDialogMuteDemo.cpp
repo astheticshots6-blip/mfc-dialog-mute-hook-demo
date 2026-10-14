@@ -1,5 +1,4 @@
 #include "StdAfx.h"
-#include "MfcDialogMuteDemo.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -8,9 +7,7 @@
 BEGIN_MESSAGE_MAP(CMfcDialogMuteDemoApp, CWinApp)
 END_MESSAGE_MAP()
 
-CMfcDialogMuteDemoApp::CMfcDialogMuteDemoApp()
-{
-}
+CMfcDialogMuteDemoApp::CMfcDialogMuteDemoApp() = default;
 
 CMfcDialogMuteDemoApp theApp;
 
@@ -18,19 +15,21 @@ BOOL CMfcDialogMuteDemoApp::InitInstance()
 {
     CWinApp::InitInstance();
 
-    // Install the dialog mute hook
+    // One-line integration point: install dialog beep mute hook before dialogs are shown.
     DialogMuteHook::InstallDialogMuteHook();
 
-    // Create tray manager
+    // Create and initialize tray toggle.
     m_pTray = new TrayIconManager();
-    m_pTray->Init(AfxGetInstanceHandle());
+    if (!m_pTray->Init(AfxGetInstanceHandle())) {
+        delete m_pTray;
+        m_pTray = nullptr;
+    }
 
-    // Show a simple dialog to demo
     CMainDlg dlg;
     m_pMainWnd = &dlg;
     INT_PTR nResponse = dlg.DoModal();
+    UNREFERENCED_PARAMETER(nResponse);
 
-    // Clean up
     if (m_pTray) {
         m_pTray->Shutdown();
         delete m_pTray;
@@ -38,6 +37,5 @@ BOOL CMfcDialogMuteDemoApp::InitInstance()
     }
 
     DialogMuteHook::UninstallDialogMuteHook();
-
-    return FALSE; // exit application
+    return FALSE;
 }

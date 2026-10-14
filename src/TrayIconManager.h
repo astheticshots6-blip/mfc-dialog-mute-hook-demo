@@ -20,7 +20,7 @@ private:
 private:
     HWND m_hWnd = nullptr;
     HINSTANCE m_hInstance = nullptr;
-    NOTIFYICONDATAW m_nid;
-    UINT m_uTaskbarMsg = 0;
+    NOTIFYICONDATAW m_nid{};
+    UINT m_uTaskbarMsg = WM_USER + 0x100;
     bool m_bInited = false;
 };
