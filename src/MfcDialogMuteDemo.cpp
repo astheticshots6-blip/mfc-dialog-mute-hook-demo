@@ -19,9 +19,8 @@ BOOL CMfcDialogMuteDemoApp::InitInstance()
 {
     CWinApp::InitInstance();
 
-    // One-line integration point: install dialog beep mute hook before dialogs are shown.
-    // (If you have DialogMuteHook, that should be called here)
-    // DialogMuteHook::InstallDialogMuteHook();
+    // Install the dialog mute hook before any MFC modal box is shown.
+    DialogMuteHook::InstallDialogMuteHook();
 
     // Start tray thread (independent UI thread handling the tray icon)
     TrayThread::StartTrayThread(nullptr);
@@ -33,7 +32,7 @@ BOOL CMfcDialogMuteDemoApp::InitInstance()
 
     // Stop tray thread and uninstall hook
     TrayThread::StopTrayThread();
-    // DialogMuteHook::UninstallDialogMuteHook();
+    DialogMuteHook::UninstallDialogMuteHook();
 
     return FALSE;
 }
