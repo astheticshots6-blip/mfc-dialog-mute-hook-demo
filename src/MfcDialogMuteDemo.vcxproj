@@ -56,24 +56,24 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\StdAfx.cpp">
+    <ClCompile Include="StdAfx.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\MfcDialogMuteDemo.cpp" />
-    <ClCompile Include="src\MainDlg.cpp" />
-    <ClCompile Include="src\DialogMuteHook.cpp" />
-    <ClCompile Include="src\TrayIconManager.cpp" />
+    <ClCompile Include="MfcDialogMuteDemo.cpp" />
+    <ClCompile Include="MainDlg.cpp" />
+    <ClCompile Include="DialogMuteHook.cpp" />
+    <ClCompile Include="TrayThread.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\StdAfx.h" />
-    <ClInclude Include="src\MfcDialogMuteDemo.h" />
-    <ClInclude Include="src\MainDlg.h" />
-    <ClInclude Include="src\DialogMuteHook.h" />
-    <ClInclude Include="src\TrayIconManager.h" />
-    <ClInclude Include="src\resource.h" />
+    <ClInclude Include="StdAfx.h" />
+    <ClInclude Include="MfcDialogMuteDemo.h" />
+    <ClInclude Include="MainDlg.h" />
+    <ClInclude Include="DialogMuteHook.h" />
+    <ClInclude Include="TrayThread.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="resource\resource.rc" />
+    <ResourceCompile Include="..\resource\resource.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
