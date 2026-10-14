@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "TrayThread.h"
+#include "DialogMuteHook.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <strsafe.h>
@@ -52,7 +53,7 @@ namespace {
     // Update tray icon and tooltip based on current state
     void UpdateTrayIcon() {
         if (!g_trayWnd) return;
-        bool muted = GetMuteInternal();
+        bool muted = DialogMuteHook::GetDialogMute();
         HICON hIcon = LoadAppIconOrFallback(muted ? IDI_SOUND_OFF : IDI_SOUND_ON);
         if (g_nid.hIcon && g_nid.hIcon != hIcon) {
             DestroyIcon(g_nid.hIcon);
@@ -68,7 +69,7 @@ namespace {
     void ShowTrayMenu() {
         HMENU hMenu = CreatePopupMenu();
         if (!hMenu) return;
-        bool muted = GetMuteInternal();
+        bool muted = DialogMuteHook::GetDialogMute();
         // use ASCII/English labels to avoid source-encoding issues in some toolchains
         InsertMenuW(hMenu, 0, MF_BYPOSITION | MF_STRING, TRAY_CMD_TOGGLE_MUTE, muted ? L"Unmute" : L"Mute sound");
         InsertMenuW(hMenu, 1, MF_BYPOSITION | MF_STRING, TRAY_CMD_EXIT, L"Exit");
@@ -79,8 +80,8 @@ namespace {
         UINT cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, g_trayWnd, NULL);
         PostMessageW(g_trayWnd, WM_NULL, 0, 0); // required trick
         if (cmd == TRAY_CMD_TOGGLE_MUTE) {
-            bool newMute = !GetMuteInternal();
-            SetMuteInternal(newMute);
+            bool newMute = !DialogMuteHook::GetDialogMute();
+            DialogMuteHook::SetDialogMute(newMute);
             UpdateTrayIcon();
             if (g_mainWnd) PostMessageW(g_mainWnd, WM_TRAY_CMD_TO_MAIN, TRAY_CMD_TOGGLE_MUTE, newMute ? 1 : 0);
         } else if (cmd == TRAY_CMD_EXIT) {
@@ -104,8 +105,8 @@ namespace {
             if (lParam == WM_RBUTTONUP) {
                 ShowTrayMenu();
             } else if (lParam == WM_LBUTTONDBLCLK) {
-                bool newMute = !GetMuteInternal();
-                SetMuteInternal(newMute);
+                bool newMute = !DialogMuteHook::GetDialogMute();
+                DialogMuteHook::SetDialogMute(newMute);
                 UpdateTrayIcon();
                 if (g_mainWnd) PostMessageW(g_mainWnd, WM_TRAY_CMD_TO_MAIN, TRAY_CMD_TOGGLE_MUTE, newMute ? 1 : 0);
             }
@@ -113,8 +114,8 @@ namespace {
         }
         case WM_HOTKEY: {
             if (wParam == 1) {
-                bool newMute = !GetMuteInternal();
-                SetMuteInternal(newMute);
+                bool newMute = !DialogMuteHook::GetDialogMute();
+                DialogMuteHook::SetDialogMute(newMute);
                 UpdateTrayIcon();
                 if (g_mainWnd) PostMessageW(g_mainWnd, WM_TRAY_CMD_TO_MAIN, TRAY_CMD_TOGGLE_MUTE, newMute ? 1 : 0);
             }
@@ -123,8 +124,8 @@ namespace {
         case WM_COMMAND: {
             int id = LOWORD(wParam);
             if (id == TRAY_CMD_TOGGLE_MUTE) {
-                bool newMute = !GetMuteInternal();
-                SetMuteInternal(newMute);
+                bool newMute = !DialogMuteHook::GetDialogMute();
+                DialogMuteHook::SetDialogMute(newMute);
                 UpdateTrayIcon();
                 if (g_mainWnd) PostMessageW(g_mainWnd, WM_TRAY_CMD_TO_MAIN, TRAY_CMD_TOGGLE_MUTE, newMute ? 1 : 0);
             } else if (id == TRAY_CMD_EXIT) {
@@ -182,7 +183,7 @@ namespace {
         g_nid.uID  = 1001;
         g_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         g_nid.uCallbackMessage = WM_TRAY_NOTIFY;
-        HICON icon = LoadAppIconOrFallback(GetMuteInternal() ? IDI_SOUND_OFF : IDI_SOUND_ON);
+        HICON icon = LoadAppIconOrFallback(DialogMuteHook::GetDialogMute() ? IDI_SOUND_OFF : IDI_SOUND_ON);
         g_nid.hIcon = icon;
         StringCchCopyW(g_nid.szTip, ARRAYSIZE(g_nid.szTip), L"Dialog sound");
 
@@ -268,7 +269,7 @@ bool StopTrayThread() {
 }
 
 bool IsMuted() {
-    return GetMuteInternal();
+    return DialogMuteHook::GetDialogMute();
 }
 
 } // namespace TrayThread
