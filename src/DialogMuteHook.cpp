@@ -66,6 +66,37 @@ namespace
         return it != hay.end();
     }
 
+    // thread-local re-entry guards to avoid recursion
+    static thread_local bool s_inMessageBoxProxy = false;
+    static thread_local bool s_inAfxProxy = false;
+
+    // Helper wrappers that call saved trampolines (original functions)
+    static inline int CallOriginalMessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType) {
+        if (g_realMessageBoxW) return reinterpret_cast<MessageBoxW_t>(g_realMessageBoxW)(hWnd, lpText, lpCaption, uType);
+        return IDOK;
+    }
+    static inline int CallOriginalMessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType) {
+        if (g_realMessageBoxA) return reinterpret_cast<MessageBoxA_t>(g_realMessageBoxA)(hWnd, lpText, lpCaption, uType);
+        return IDOK;
+    }
+    static inline int CallOriginalMessageBoxIndirectW(const MSGBOXPARAMSW* p) {
+        if (g_realMessageBoxIndirectW) return reinterpret_cast<MessageBoxIndirectW_t>(g_realMessageBoxIndirectW)(p);
+        return IDOK;
+    }
+    static inline int CallOriginalMessageBoxIndirectA(const MSGBOXPARAMSA* p) {
+        if (g_realMessageBoxIndirectA) return reinterpret_cast<MessageBoxIndirectA_t>(g_realMessageBoxIndirectA)(p);
+        return IDOK;
+    }
+
+    static inline int CallOriginalAfxMessageBoxW(LPCWSTR lpText, UINT nType, UINT nIDHelp) {
+        if (g_realAfxMessageBoxW) return reinterpret_cast<AfxMessageBoxW_t>(g_realAfxMessageBoxW)(lpText, nType, nIDHelp);
+        return IDOK;
+    }
+    static inline int CallOriginalAfxMessageBoxA(LPCSTR lpText, UINT nType, UINT nIDHelp) {
+        if (g_realAfxMessageBoxA) return reinterpret_cast<AfxMessageBoxA_t>(g_realAfxMessageBoxA)(lpText, nType, nIDHelp);
+        return IDOK;
+    }
+
     BOOL WINAPI ProxyMessageBeep(UINT uType)
     {
         if (g_bMuteDialogSounds.load()) {
@@ -128,50 +159,120 @@ namespace
 
     int WINAPI ProxyMessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType)
     {
-        OutputDebugStringW(L"[DialogMuteHook] MessageBoxW called\n");
-        if (g_realMessageBoxW) return g_realMessageBoxW(hWnd, lpText, lpCaption, uType);
-        return MessageBoxW(hWnd, lpText, lpCaption, uType);
+        if (s_inMessageBoxProxy) {
+            return CallOriginalMessageBoxW(hWnd, lpText, lpCaption, uType);
+        }
+        s_inMessageBoxProxy = true;
+        OutputDebugStringW(L"[DialogMuteHook] ProxyMessageBoxW entered\n");
+
+        int ret = IDOK;
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] ProxyMessageBoxW: suppressed (mute ON)\n");
+            ret = IDOK;
+        } else {
+            ret = CallOriginalMessageBoxW(hWnd, lpText, lpCaption, uType);
+        }
+
+        s_inMessageBoxProxy = false;
+        return ret;
     }
 
     int WINAPI ProxyMessageBoxA(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType)
     {
-        OutputDebugStringA("[DialogMuteHook] MessageBoxA called\n");
-        if (g_realMessageBoxA) return g_realMessageBoxA(hWnd, lpText, lpCaption, uType);
-        return MessageBoxA(hWnd, lpText, lpCaption, uType);
+        if (s_inMessageBoxProxy) {
+            return CallOriginalMessageBoxA(hWnd, lpText, lpCaption, uType);
+        }
+        s_inMessageBoxProxy = true;
+        OutputDebugStringA("[DialogMuteHook] ProxyMessageBoxA entered\n");
+
+        int ret = IDOK;
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringA("[DialogMuteHook] ProxyMessageBoxA: suppressed (mute ON)\n");
+            ret = IDOK;
+        } else {
+            ret = CallOriginalMessageBoxA(hWnd, lpText, lpCaption, uType);
+        }
+
+        s_inMessageBoxProxy = false;
+        return ret;
     }
 
     int WINAPI ProxyMessageBoxIndirectW(const MSGBOXPARAMSW* pMsgBoxParams)
     {
-        OutputDebugStringW(L"[DialogMuteHook] MessageBoxIndirectW called\n");
-        if (g_realMessageBoxIndirectW) return g_realMessageBoxIndirectW(pMsgBoxParams);
-        return MessageBoxIndirectW(pMsgBoxParams);
+        if (s_inMessageBoxProxy) return CallOriginalMessageBoxIndirectW(pMsgBoxParams);
+        s_inMessageBoxProxy = true;
+        OutputDebugStringW(L"[DialogMuteHook] ProxyMessageBoxIndirectW entered\n");
+        int ret = IDOK;
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringW(L"[DialogMuteHook] ProxyMessageBoxIndirectW: suppressed (mute ON)\n");
+            ret = IDOK;
+        } else {
+            ret = CallOriginalMessageBoxIndirectW(pMsgBoxParams);
+        }
+        s_inMessageBoxProxy = false;
+        return ret;
     }
 
     int WINAPI ProxyMessageBoxIndirectA(const MSGBOXPARAMSA* pMsgBoxParams)
     {
-        OutputDebugStringA("[DialogMuteHook] MessageBoxIndirectA called\n");
-        if (g_realMessageBoxIndirectA) return g_realMessageBoxIndirectA(pMsgBoxParams);
-        return MessageBoxIndirectA(pMsgBoxParams);
+        if (s_inMessageBoxProxy) return CallOriginalMessageBoxIndirectA(pMsgBoxParams);
+        s_inMessageBoxProxy = true;
+        OutputDebugStringA("[DialogMuteHook] ProxyMessageBoxIndirectA entered\n");
+        int ret = IDOK;
+        if (g_bMuteDialogSounds.load()) {
+            OutputDebugStringA("[DialogMuteHook] ProxyMessageBoxIndirectA: suppressed (mute ON)\n");
+            ret = IDOK;
+        } else {
+            ret = CallOriginalMessageBoxIndirectA(pMsgBoxParams);
+        }
+        s_inMessageBoxProxy = false;
+        return ret;
     }
 
     int WINAPI ProxyAfxMessageBoxW(LPCWSTR lpText, UINT nType, UINT nIDHelp)
     {
-        OutputDebugStringW(L"[DialogMuteHook] AfxMessageBoxW called\n");
+        if (s_inAfxProxy) return CallOriginalAfxMessageBoxW(lpText, nType, nIDHelp);
+        s_inAfxProxy = true;
+        OutputDebugStringW(L"[DialogMuteHook] ProxyAfxMessageBoxW entered\n");
+
+        int ret = IDOK;
         if (g_bMuteDialogSounds.load()) {
-            OutputDebugStringW(L"[DialogMuteHook] AfxMessageBoxW: suppressing sound via global mute\n");
+            OutputDebugStringW(L"[DialogMuteHook] ProxyAfxMessageBoxW: suppressing sound (mute ON)\n");
+            if (g_realAfxMessageBoxW) {
+                ret = CallOriginalAfxMessageBoxW(lpText, nType, nIDHelp);
+            } else {
+                ret = IDOK;
+            }
+        } else {
+            if (g_realAfxMessageBoxW) ret = CallOriginalAfxMessageBoxW(lpText, nType, nIDHelp);
+            else ret = IDOK;
         }
-        if (g_realAfxMessageBoxW) return g_realAfxMessageBoxW(lpText, nType, nIDHelp);
-        return MessageBoxW(nullptr, lpText, L"", nType);
+
+        s_inAfxProxy = false;
+        return ret;
     }
 
     int WINAPI ProxyAfxMessageBoxA(LPCSTR lpText, UINT nType, UINT nIDHelp)
     {
-        OutputDebugStringA("[DialogMuteHook] AfxMessageBoxA called\n");
+        if (s_inAfxProxy) return CallOriginalAfxMessageBoxA(lpText, nType, nIDHelp);
+        s_inAfxProxy = true;
+        OutputDebugStringA("[DialogMuteHook] ProxyAfxMessageBoxA entered\n");
+
+        int ret = IDOK;
         if (g_bMuteDialogSounds.load()) {
-            OutputDebugStringA("[DialogMuteHook] AfxMessageBoxA: suppressing sound via global mute\n");
+            OutputDebugStringA("[DialogMuteHook] ProxyAfxMessageBoxA: suppressing sound (mute ON)\n");
+            if (g_realAfxMessageBoxA) {
+                ret = CallOriginalAfxMessageBoxA(lpText, nType, nIDHelp);
+            } else {
+                ret = IDOK;
+            }
+        } else {
+            if (g_realAfxMessageBoxA) ret = CallOriginalAfxMessageBoxA(lpText, nType, nIDHelp);
+            else ret = IDOK;
         }
-        if (g_realAfxMessageBoxA) return g_realAfxMessageBoxA(lpText, nType, nIDHelp);
-        return MessageBoxA(nullptr, lpText, "", nType);
+
+        s_inAfxProxy = false;
+        return ret;
     }
 
     bool InstallInlineHook(void* target, void* detour, void** outTrampoline)
@@ -268,7 +369,8 @@ namespace
         if (!p) return false;
         void* tramp = nullptr;
         if (!InstallInlineHook(reinterpret_cast<void*>(p), detour, &tramp)) return false;
-        *originalAddress = reinterpret_cast<void*>(p);
+        // store trampoline (callable original) instead of the exported entry (which is now hooked)
+        *originalAddress = tramp;
         return true;
     }
 
@@ -292,10 +394,10 @@ namespace
                 sprintf_s(buf, "[DialogMuteHook] Found export name: %s\n", name);
                 OutputDebugStringA(buf);
                 void* tramp = nullptr;
-                if (InstallInlineHook(reinterpret_cast<void*>(GetProcAddress(hModule, name)), reinterpret_cast<void*>(&ProxyAfxMessageBoxW), &tramp)) {
-                    // assume Unicode version if we hooked a mangled name; store original
-                    g_realAfxMessageBoxW = reinterpret_cast<AfxMessageBoxW_t>(GetProcAddress(hModule, name));
-                    sprintf_s(buf, "[DialogMuteHook] Hooked export symbol %s at %p\n", name, GetProcAddress(hModule, name));
+                FARPROC addr = GetProcAddress(hModule, name);
+                if (addr && InstallInlineHook(reinterpret_cast<void*>(addr), reinterpret_cast<void*>(&ProxyAfxMessageBoxW), &tramp)) {
+                    g_realAfxMessageBoxW = reinterpret_cast<AfxMessageBoxW_t>(tramp);
+                    sprintf_s(buf, "[DialogMuteHook] Hooked export symbol %s at %p\n", name, addr);
                     OutputDebugStringA(buf);
                 }
             }
@@ -409,21 +511,83 @@ namespace
         void* tramp = nullptr;
         if (hUser) {
             void* pMessageBeep = reinterpret_cast<void*>(GetProcAddress(hUser, "MessageBeep"));
-            if (pMessageBeep) InstallInlineHook(pMessageBeep, reinterpret_cast<void*>(&ProxyMessageBeep), &tramp);
+            if (pMessageBeep) {
+                void* t = nullptr;
+                if (InstallInlineHook(pMessageBeep, reinterpret_cast<void*>(&ProxyMessageBeep), &t)) {
+                    g_realMessageBeep = reinterpret_cast<MessageBeep_t>(t);
+                }
+            }
+
+            void* pMessageBoxW = reinterpret_cast<void*>(GetProcAddress(hUser, "MessageBoxW"));
+            if (pMessageBoxW) {
+                void* t = nullptr;
+                if (InstallInlineHook(pMessageBoxW, reinterpret_cast<void*>(&ProxyMessageBoxW), &t)) {
+                    g_realMessageBoxW = reinterpret_cast<MessageBoxW_t>(t);
+                }
+            }
+
+            void* pMessageBoxA = reinterpret_cast<void*>(GetProcAddress(hUser, "MessageBoxA"));
+            if (pMessageBoxA) {
+                void* t = nullptr;
+                if (InstallInlineHook(pMessageBoxA, reinterpret_cast<void*>(&ProxyMessageBoxA), &t)) {
+                    g_realMessageBoxA = reinterpret_cast<MessageBoxA_t>(t);
+                }
+            }
+
+            void* pMessageBoxIndirectW = reinterpret_cast<void*>(GetProcAddress(hUser, "MessageBoxIndirectW"));
+            if (pMessageBoxIndirectW) {
+                void* t = nullptr;
+                if (InstallInlineHook(pMessageBoxIndirectW, reinterpret_cast<void*>(&ProxyMessageBoxIndirectW), &t)) {
+                    g_realMessageBoxIndirectW = reinterpret_cast<MessageBoxIndirectW_t>(t);
+                }
+            }
+
+            void* pMessageBoxIndirectA = reinterpret_cast<void*>(GetProcAddress(hUser, "MessageBoxIndirectA"));
+            if (pMessageBoxIndirectA) {
+                void* t = nullptr;
+                if (InstallInlineHook(pMessageBoxIndirectA, reinterpret_cast<void*>(&ProxyMessageBoxIndirectA), &t)) {
+                    g_realMessageBoxIndirectA = reinterpret_cast<MessageBoxIndirectA_t>(t);
+                }
+            }
         }
         if (hKernel) {
             void* pBeep = reinterpret_cast<void*>(GetProcAddress(hKernel, "Beep"));
-            if (pBeep) InstallInlineHook(pBeep, reinterpret_cast<void*>(&ProxyBeep), &tramp);
+            if (pBeep) {
+                void* t = nullptr;
+                if (InstallInlineHook(pBeep, reinterpret_cast<void*>(&ProxyBeep), &t)) {
+                    g_realBeep = reinterpret_cast<Beep_t>(t);
+                }
+            }
         }
         if (hWinmm) {
             void* pPlaySoundW = reinterpret_cast<void*>(GetProcAddress(hWinmm, "PlaySoundW"));
-            if (pPlaySoundW) InstallInlineHook(pPlaySoundW, reinterpret_cast<void*>(&ProxyPlaySoundW), &tramp);
+            if (pPlaySoundW) {
+                void* t = nullptr;
+                if (InstallInlineHook(pPlaySoundW, reinterpret_cast<void*>(&ProxyPlaySoundW), &t)) {
+                    g_realPlaySoundW = reinterpret_cast<PlaySoundW_t>(t);
+                }
+            }
             void* pPlaySoundA = reinterpret_cast<void*>(GetProcAddress(hWinmm, "PlaySoundA"));
-            if (pPlaySoundA) InstallInlineHook(pPlaySoundA, reinterpret_cast<void*>(&ProxyPlaySoundA), &tramp);
+            if (pPlaySoundA) {
+                void* t = nullptr;
+                if (InstallInlineHook(pPlaySoundA, reinterpret_cast<void*>(&ProxyPlaySoundA), &t)) {
+                    g_realPlaySoundA = reinterpret_cast<PlaySoundA_t>(t);
+                }
+            }
             void* pSndPlaySoundW = reinterpret_cast<void*>(GetProcAddress(hWinmm, "sndPlaySoundW"));
-            if (pSndPlaySoundW) InstallInlineHook(pSndPlaySoundW, reinterpret_cast<void*>(&ProxySndPlaySoundW), &tramp);
+            if (pSndPlaySoundW) {
+                void* t = nullptr;
+                if (InstallInlineHook(pSndPlaySoundW, reinterpret_cast<void*>(&ProxySndPlaySoundW), &t)) {
+                    g_realSndPlaySoundW = reinterpret_cast<SndPlaySoundW_t>(t);
+                }
+            }
             void* pSndPlaySoundA = reinterpret_cast<void*>(GetProcAddress(hWinmm, "sndPlaySoundA"));
-            if (pSndPlaySoundA) InstallInlineHook(pSndPlaySoundA, reinterpret_cast<void*>(&ProxySndPlaySoundA), &tramp);
+            if (pSndPlaySoundA) {
+                void* t = nullptr;
+                if (InstallInlineHook(pSndPlaySoundA, reinterpret_cast<void*>(&ProxySndPlaySoundA), &t)) {
+                    g_realSndPlaySoundA = reinterpret_cast<SndPlaySoundA_t>(t);
+                }
+            }
         }
     }
 
@@ -500,15 +664,6 @@ void DialogMuteHook::SetDialogMute(bool mute)
 {
     g_bMuteDialogSounds.store(mute);
     OutputDebugStringW(mute ? L"[DialogMuteHook] Global mute ON\n" : L"[DialogMuteHook] Global mute OFF\n");
-}
-
-void DialogMuteHook::UninstallDialogMuteHook()
-{
-    OutputDebugStringW(L"[DialogMuteHook] UninstallDialogMuteHook\n");
-    g_stopPatchThread.store(true);
-    if (g_patchThread.joinable()) g_patchThread.join();
-    RemoveAllInlineHooks();
-    g_bMuteDialogSounds.store(false);
 }
 
 bool DialogMuteHook::GetDialogMute()
