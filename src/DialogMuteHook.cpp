@@ -1,3 +1,4 @@
+#include "StdAfx.h"
 #include "DialogMuteHook.h"
 #include <winternl.h>
 #include <vector>
