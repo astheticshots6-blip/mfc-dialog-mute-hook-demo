@@ -1,3 +1,5 @@
+#include <windows.h>
+#include <winres.h>
 #include "resource.h"
 
 IDD_MAINDLG DIALOGEX 0, 0, 260, 180
