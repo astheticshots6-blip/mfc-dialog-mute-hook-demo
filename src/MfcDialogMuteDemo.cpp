@@ -1,6 +1,8 @@
 #pragma once
 
 #include "StdAfx.h"
+#include "MfcDialogMuteDemo.h"
+#include "MainDlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
