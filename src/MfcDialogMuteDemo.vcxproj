@@ -63,6 +63,7 @@
     <ClCompile Include="MainDlg.cpp" />
     <ClCompile Include="DialogMuteHook.cpp" />
     <ClCompile Include="TrayThread.cpp" />
+    <ClCompile Include="third_party\minhook\MinHook.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="StdAfx.h" />
@@ -71,6 +72,7 @@
     <ClInclude Include="DialogMuteHook.h" />
     <ClInclude Include="TrayThread.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="third_party\minhook\MinHook.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resource\resource.rc" />
