@@ -1,3 +1,4 @@
+#include "StdAfx.h"
 #include "TrayThread.h"
 #include <windows.h>
 #include <shellapi.h>
@@ -68,8 +69,9 @@ namespace {
         HMENU hMenu = CreatePopupMenu();
         if (!hMenu) return;
         bool muted = GetMuteInternal();
-        InsertMenuW(hMenu, 0, MF_BYPOSITION | MF_STRING, TRAY_CMD_TOGGLE_MUTE, muted ? L"取消静音" : L"静音提示音");
-        InsertMenuW(hMenu, 1, MF_BYPOSITION | MF_STRING, TRAY_CMD_EXIT, L"退出");
+        // use ASCII/English labels to avoid source-encoding issues in some toolchains
+        InsertMenuW(hMenu, 0, MF_BYPOSITION | MF_STRING, TRAY_CMD_TOGGLE_MUTE, muted ? L"Unmute" : L"Mute sound");
+        InsertMenuW(hMenu, 1, MF_BYPOSITION | MF_STRING, TRAY_CMD_EXIT, L"Exit");
 
         POINT pt;
         GetCursorPos(&pt);
